@@ -417,6 +417,22 @@ enum CLIENT_PORT = 68;
 ubyte[] requestedOptions;
 string[] sentOptions;
 ushort requestSecs = 0;
+string destAddr = "255.255.255.255";
+uint ciaddr = 0;
+ubyte msgtype = DHCPMessageType.discover;
+ushort flags = 0x8000; // BROADCAST flag - required to be able to receive a reply to an imaginary hardware address
+
+uint ipAddress(string value) {
+	ubyte[] bytes;
+	bytes = value
+		.replace(" ", ".")
+		.replace(",", ".")
+		.splitter(".")
+		.map!(to!ubyte)
+		.array();
+	enforce(bytes.length % 4 == 0, "Malformed ciaddr IP address");
+	return (bytes[0] << 24) | (bytes[1] << 16) | (bytes[2] << 8) | bytes[3];
+}
 
 DHCPPacket generatePacket(ubyte[] mac)
 {
@@ -427,11 +443,12 @@ DHCPPacket generatePacket(ubyte[] mac)
 	packet.header.hops = 0;
 	packet.header.xid = uniform!uint();
 	packet.header.secs = requestSecs;
-	packet.header.flags = htons(0x8000); // Set BROADCAST flag - required to be able to receive a reply to an imaginary hardware address
+	packet.header.ciaddr = htonl(ciaddr);
+	packet.header.flags = htons(flags);
 	packet.header.chaddr[0..mac.length] = mac;
 	foreach (ref b; packet.header.chaddr[mac.length..packet.header.hlen])
 		b = uniform!ubyte();
-	packet.options ~= DHCPOption(DHCPOptionType.dhcpMessageType, [DHCPMessageType.discover]);
+	packet.options ~= DHCPOption(DHCPOptionType.dhcpMessageType, [msgtype]);
 	if (requestedOptions.length)
 		packet.options ~= DHCPOption(DHCPOptionType.parameterRequestList, requestedOptions);
 	foreach (option; sentOptions)
@@ -488,7 +505,7 @@ void sendPacket(Socket socket, DHCPPacket packet)
 		stderr.printPacket(packet);
 	}
 	auto data = serializePacket(packet);
-	auto sent = socket.sendTo(data, new InternetAddress("255.255.255.255", SERVER_PORT));
+	auto sent = socket.sendTo(data, new InternetAddress(destAddr, SERVER_PORT));
 	enforce(sent > 0, "sendto error");
 	enforce(sent == data.length, "Sent only %d/%d bytes".format(sent, data.length));
 }
@@ -547,6 +564,7 @@ int main(string[] args)
 	bool help, query, wait;
 	float timeoutSeconds = 0f;
 	uint tries = 1;
+	string ciaddrStr = "0.0.0.0";
 
 	enum forever = 1000.days;
 
@@ -563,6 +581,10 @@ int main(string[] args)
 		"timeout", &timeoutSeconds,
 		"tries", &tries,
 		"option", &sentOptions,
+		"dest", &destAddr,
+		"ciaddr", &ciaddrStr,
+		"msgtype", &msgtype,
+		"flags", &flags,
 	);
 
 	if (wait) enforce(query, "Option --wait only supported with --query");
@@ -611,8 +633,18 @@ int main(string[] args)
 		stderr.writeln("                  Default is 10 seconds. Can be a fractional number. ");
 		stderr.writeln("  --tries N       Send N DHCP discover packets after each timeout interval.");
 		stderr.writeln("                  Specify N=0 to retry indefinitely.");
+		stderr.writeln("  --dest IP       Destination IP address; defaults to 255.255.255.255");
+		stderr.writeln("                  Specify dhcp server IP address for non-broadcast.");
+		stderr.writeln("  --ciaddr IP     Client IP address; defaults to 0.0.0.0");
+		stderr.writeln("                  Specify client IP address for direct request.");
+		stderr.writeln("  --msgtype N     Message type; defaults to DHCPDISCOVER (1)");
+		stderr.writeln("                  Use 3 for DHCPREQUEST");
+		stderr.writeln("  --flags N       Flags; defaults to BROADCAST (0x8000).");
+		stderr.writeln("                  Must specify BROADCAST if using a fictious mac address");
 		return 0;
 	}
+
+	ciaddr = ipAddress(ciaddrStr);
 
 	auto socket = new UdpSocket();
 	socket.setOption(SocketOptionLevel.SOCKET, SocketOption.BROADCAST, 1);

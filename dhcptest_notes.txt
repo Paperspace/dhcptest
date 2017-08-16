@@ -1,0 +1,17 @@
+dhcptest_notes.txt
+
+Requirements for testing DHCPDISCOVER on Windows 10:
+
+1) Disable firewall
+2) Run as admin
+
+Examples:
+
+Send DHCPDISCOVER with an old ip address:
+dhcptest --mac 9A:3C:2D:83:58:95 --bind 10.64.6.104 --option 50=10.223.199.10
+
+Send full DHCPREQUEST emulating all options requested by Windows 10:
+dhcptest --mac 9A:3C:2D:83:58:95 --option "60=MSFT 5.0" --option 12=ps6a35nw --option "81[hex]=00:00:00:70:73:36:61:33:35:6e:77" --option "61[hex]=01:9A:3C:2D:83:58:95" --option "55[hex]=01:03:06:0F:1F:21:2B:2C:2E:2F:79:F9:FC" --dest 10.64.0.1 --ciaddr 10.64.6.104 --msgtype 3 --flags 0
+
+Send minimal DHCPREQUEST:
+dhcptest --mac 9A:3C:2D:83:58:95 --dest 10.64.0.1 --ciaddr 10.64.6.104 --msgtype 3 --flags 0
